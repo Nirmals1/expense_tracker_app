@@ -17,6 +17,8 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _budgetController = TextEditingController();
   final _currencyController = TextEditingController();
+  String? _budgetDraft;
+  String? _currencyDraft;
 
   @override
   void dispose() {
@@ -32,8 +34,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    _budgetController.text = settings.monthlyBudget?.toString() ?? '';
-    _currencyController.text = settings.currencySymbol;
+    final budgetText = settings.monthlyBudget?.toString() ?? '';
+    if (_budgetController.text != budgetText) {
+      _budgetController.text = budgetText;
+    }
+    if (_currencyController.text != settings.currencySymbol) {
+      _currencyController.text = settings.currencySymbol;
+    }
 
     return Scaffold(
       appBar: AppBar(title: const BrandAppBarTitle(sectionTitle: 'Settings')),
@@ -47,6 +54,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               labelText: 'Monthly budget',
               hintText: 'Leave empty to disable budget warning',
             ),
+            onChanged: (value) => _budgetDraft = value,
             onFieldSubmitted: (_) => _saveBudget(),
           ),
           const SizedBox(height: 12),
@@ -61,10 +69,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     hintText: '\$',
                     counterText: '',
                   ),
+                  onChanged: (value) => _currencyDraft = value,
                 ),
               ),
               const SizedBox(width: 12),
-              FilledButton(onPressed: _saveCurrency, child: const Text('Save')),
+              FilledButton(onPressed: _saveSettings, child: const Text('Save')),
             ],
           ),
           const SizedBox(height: 12),
@@ -134,19 +143,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _saveBudget() async {
-    final value = _budgetController.text.trim();
-    final parsed = double.tryParse(value);
-    await ref
-        .read(settingsControllerProvider.notifier)
-        .update(monthlyBudget: parsed, clearBudget: value.isEmpty);
+    await _saveSettings(clearBudgetWhenEmpty: true);
   }
 
-  Future<void> _saveCurrency() async {
-    final value = _currencyController.text.trim();
-    if (value.isEmpty) return;
-    await ref
-        .read(settingsControllerProvider.notifier)
-        .update(currencySymbol: value);
+  Future<void> _saveSettings({bool clearBudgetWhenEmpty = false}) async {
+    final budgetValue = (_budgetDraft ?? _budgetController.text).trim();
+    final parsedBudget = budgetValue.isEmpty ? null : double.tryParse(budgetValue);
+    if (budgetValue.isNotEmpty && parsedBudget == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid monthly budget.')),
+      );
+      return;
+    }
+
+    final currencyValue = (_currencyDraft ?? _currencyController.text).trim();
+    final currentSettings =
+        ref.read(settingsControllerProvider).valueOrNull ?? AppSettings.defaults;
+
+    await ref.read(settingsControllerProvider.notifier).update(
+          monthlyBudget: parsedBudget,
+          clearBudget: clearBudgetWhenEmpty && budgetValue.isEmpty,
+          currencySymbol:
+              currencyValue.isEmpty ? currentSettings.currencySymbol : currencyValue,
+        );
   }
 
   Future<void> _resetData() async {
